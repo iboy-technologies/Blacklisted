@@ -12,6 +12,14 @@ const CAR_COLORS := [
 ]
 const MAX_SPEED := 42.0
 const BOOST_SPEED := 66.0
+const CHECKPOINT_RADIUS := 5.0
+const TOTAL_LAPS := 1
+const CHECKPOINTS := [
+	Vector3(0, 0.6, 15),
+	Vector3(15, 0.6, 0),
+	Vector3(0, 0.6, -15),
+	Vector3(-15, 0.6, 0)
+]
 
 var _local_car: Node3D
 var _camera: Camera3D
@@ -19,9 +27,16 @@ var _speed_label: Label
 var _score_label: Label
 var _boost_bar: ProgressBar
 var _camera_label: Label
+var _progress_label: Label
+var _race_label: Label
+var _progress_bar: ProgressBar
+var _checkpoint_visuals: Array[Node3D] = []
 var _speed := 0.0
 var _score := 0
 var _boost := 100.0
+var _current_checkpoint := 0
+var _lap := 1
+var _race_finished := false
 var _camera_mode := 0
 var _camera_time := 0.0
 var _map_index := 0
@@ -47,6 +62,7 @@ func _process(delta: float) -> void:
 		return
 	_camera_time += delta
 	_drive_local_car(delta)
+	_update_race_progress()
 	_update_camera(delta)
 	_update_hud()
 
@@ -111,6 +127,7 @@ func _build_world() -> void:
 	_add_road(Vector3(11, 0, 0), Vector3(3, 0.12, 24), road_material)
 	for marker in range(-3, 4):
 		_add_road(Vector3(marker * 5.0, 0.08, 0), Vector3(1.6, 0.03, 0.25), _material(Color(0.95, 0.78, 0.25)))
+	_build_checkpoints()
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, -30, 0)
@@ -128,7 +145,7 @@ func _build_world() -> void:
 		peer_ids.append(1)
 	for index in range(peer_ids.size()):
 		var angle := TAU * float(index) / float(maxi(peer_ids.size(), 1))
-		var position := Vector3(cos(angle) * 8.5, 0.5, sin(angle) * 8.5)
+		var position := CHECKPOINTS[0] + Vector3(float(index) * 2.2 - 2.2, 0, 0)
 		var player_name := str(players.get(peer_ids[index], "Driver"))
 		var car := _add_car(position, player_name, _car_index, index)
 		if int(peer_ids[index]) == multiplayer.get_unique_id() or (not multiplayer.has_multiplayer_peer() and index == 0):
@@ -222,6 +239,10 @@ func _build_hud() -> void:
 	_camera_label.text = _camera_mode_name()
 	_camera_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	info.add_child(_camera_label)
+	_race_label = Label.new()
+	_race_label.text = "MULTIPLAYER RACE  /  Host-controlled shared selection"
+	_race_label.add_theme_color_override("font_color", Color(1.0, 0.78, 0.25))
+	info.add_child(_race_label)
 
 	var metrics := VBoxContainer.new()
 	metrics.custom_minimum_size.x = 250
@@ -239,6 +260,14 @@ func _build_hud() -> void:
 	_boost_bar.show_percentage = false
 	_boost_bar.custom_minimum_size.y = 12
 	metrics.add_child(_boost_bar)
+	_progress_label = Label.new()
+	_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	metrics.add_child(_progress_label)
+	_progress_bar = ProgressBar.new()
+	_progress_bar.max_value = 100.0
+	_progress_bar.show_percentage = false
+	_progress_bar.custom_minimum_size.y = 12
+	metrics.add_child(_progress_bar)
 
 
 func _update_hud() -> void:
@@ -247,10 +276,91 @@ func _update_hud() -> void:
 	_speed_label.text = "%03d KM/H" % int(absf(_speed) * 3.6)
 	_score_label.text = "SCORE  %07d" % _score
 	_boost_bar.value = _boost
+	var completed := _current_checkpoint
+	var total := CHECKPOINTS.size() * TOTAL_LAPS
+	_progress_label.text = "LAP %d/%d  /  CHECKPOINT %d/%d" % [_lap, TOTAL_LAPS, completed, total]
+	_progress_bar.value = (float(completed) / float(total)) * 100.0
+	if _race_finished:
+		_race_label.text = "RACE COMPLETE  /  WAITING FOR THE HOST"
 
 
 func _camera_mode_name() -> String:
 	return ["CHASE CAM", "HOOD CAM", "CINEMATIC ORBIT"][_camera_mode]
+
+
+func _update_race_progress() -> void:
+	if _race_finished or _local_car == null:
+		return
+	var target: Vector3 = CHECKPOINTS[_current_checkpoint]
+	if _local_car.global_position.distance_to(target) > CHECKPOINT_RADIUS:
+		return
+	_score += 250
+	_current_checkpoint += 1
+	if _current_checkpoint >= CHECKPOINTS.size():
+		_lap += 1
+		if _lap > TOTAL_LAPS:
+			_race_finished = true
+			_speed = 0.0
+			_show_finish_gate()
+		else:
+			_current_checkpoint = 0
+	_update_checkpoint_visuals()
+
+
+func _build_checkpoints() -> void:
+	for index in range(CHECKPOINTS.size()):
+		var gate := Node3D.new()
+		gate.position = CHECKPOINTS[index]
+		add_child(gate)
+		var left_post := _mesh_instance(_checkpoint_post_mesh(), _checkpoint_material())
+		left_post.position = Vector3(-2.2, 1.8, 0)
+		gate.add_child(left_post)
+		var right_post := _mesh_instance(_checkpoint_post_mesh(), _checkpoint_material())
+		right_post.position = Vector3(2.2, 1.8, 0)
+		gate.add_child(right_post)
+		var beam_mesh := BoxMesh.new()
+		beam_mesh.size = Vector3(4.4, 0.35, 0.35)
+		var beam := _mesh_instance(beam_mesh, _checkpoint_material())
+		beam.position = Vector3(0, 3.6, 0)
+		gate.add_child(beam)
+		var label := Label3D.new()
+		label.text = "CHECKPOINT %02d" % (index + 1)
+		label.position = Vector3(0, 4.15, 0)
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		label.font_size = 24
+		gate.add_child(label)
+		_checkpoint_visuals.append(gate)
+	_update_checkpoint_visuals()
+
+
+func _checkpoint_post_mesh() -> BoxMesh:
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.35, 3.6, 0.35)
+	return mesh
+
+
+func _checkpoint_material() -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.12, 0.9, 0.78)
+	material.emission_enabled = true
+	material.emission = Color(0.04, 0.45, 0.35)
+	material.emission_energy_multiplier = 2.5
+	return material
+
+
+func _update_checkpoint_visuals() -> void:
+	for index in range(_checkpoint_visuals.size()):
+		var gate := _checkpoint_visuals[index]
+		var active := index == _current_checkpoint and not _race_finished
+		gate.visible = active or index == 0
+
+
+func _show_finish_gate() -> void:
+	var gate := _checkpoint_visuals[0]
+	gate.visible = true
+	var label := gate.get_child(3) as Label3D
+	if label != null:
+		label.text = "FINISH  /  CLEAN WIN"
 
 
 func _add_road(position: Vector3, size: Vector3, material: StandardMaterial3D) -> void:

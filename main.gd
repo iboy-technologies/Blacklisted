@@ -1,6 +1,7 @@
 extends Control
 
 const MATCH_SCENE := preload("res://match.tscn")
+const CAREER_SCENE := preload("res://career.tscn")
 const PANEL_COLOR := Color(0.055, 0.075, 0.105, 0.94)
 const ACCENT := Color(0.25, 0.78, 0.72)
 const TEXT_COLOR := Color(0.9, 0.94, 0.97)
@@ -80,6 +81,9 @@ func _build_connection_panel() -> Control:
 	var join_button := _button("JOIN LOBBY")
 	join_button.pressed.connect(_on_join_pressed)
 	content.add_child(join_button)
+	var career_button := _button("CAREER MODE")
+	career_button.pressed.connect(func(): get_tree().change_scene_to_packed(CAREER_SCENE))
+	content.add_child(career_button)
 	var note := Label.new()
 	note.text = "Share your address and port with players on your network."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
