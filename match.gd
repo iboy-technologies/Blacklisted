@@ -12,6 +12,9 @@ const CAR_COLORS := [
 ]
 const MAX_SPEED := 42.0
 const BOOST_SPEED := 66.0
+const WEAPON_DAMAGE := [8, 14, 30]
+const WEAPON_COOLDOWN := [0.18, 0.4, 1.0]
+const MAX_HEALTH := 100.0
 const CHECKPOINT_RADIUS := 5.0
 const TOTAL_LAPS := 1
 const CHECKPOINTS := [
@@ -29,6 +32,8 @@ var _boost_bar: ProgressBar
 var _camera_label: Label
 var _progress_label: Label
 var _race_label: Label
+var _health_bar: ProgressBar
+var _weapon_label: Label
 var _progress_bar: ProgressBar
 var _checkpoint_visuals: Array[Node3D] = []
 var _speed := 0.0
@@ -41,12 +46,16 @@ var _camera_mode := 0
 var _camera_time := 0.0
 var _map_index := 0
 var _car_index := 0
+var _weapon_index := 0
+var _health := MAX_HEALTH
+var _weapon_timer := 0.0
 
 
 func _ready() -> void:
 	var state := LobbySession.get_state()
 	_map_index = clampi(int(state.get("map", 0)), 0, LobbySession.MAPS.size() - 1)
 	_car_index = clampi(int(state.get("car", 0)), 0, LobbySession.CARS.size() - 1)
+	_weapon_index = clampi(int(state.get("weapon", 0)), 0, LobbySession.WEAPONS.size() - 1)
 	_build_world()
 	_build_hud()
 	LobbySession.state_changed.connect(_on_state_changed)
@@ -62,6 +71,8 @@ func _process(delta: float) -> void:
 		return
 	_camera_time += delta
 	_drive_local_car(delta)
+	_weapon_timer = maxf(0.0, _weapon_timer - delta)
+	_update_weapons()
 	_update_race_progress()
 	_update_camera(delta)
 	_update_hud()
@@ -71,6 +82,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_C:
 		_camera_mode = (_camera_mode + 1) % 3
 		_camera_label.text = _camera_mode_name()
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_Q:
+			_weapon_index = posmod(_weapon_index - 1, LobbySession.WEAPONS.size())
+		elif event.keycode == KEY_E:
+			_weapon_index = posmod(_weapon_index + 1, LobbySession.WEAPONS.size())
 
 
 func _drive_local_car(delta: float) -> void:
@@ -243,6 +259,9 @@ func _build_hud() -> void:
 	_race_label.text = "MULTIPLAYER RACE  /  Host-controlled shared selection"
 	_race_label.add_theme_color_override("font_color", Color(1.0, 0.78, 0.25))
 	info.add_child(_race_label)
+	_weapon_label = Label.new()
+	_weapon_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.25))
+	info.add_child(_weapon_label)
 
 	var metrics := VBoxContainer.new()
 	metrics.custom_minimum_size.x = 250
@@ -268,6 +287,15 @@ func _build_hud() -> void:
 	_progress_bar.show_percentage = false
 	_progress_bar.custom_minimum_size.y = 12
 	metrics.add_child(_progress_bar)
+	_health_bar = ProgressBar.new()
+	_health_bar.max_value = MAX_HEALTH
+	_health_bar.show_percentage = false
+	_health_bar.custom_minimum_size.y = 12
+	metrics.add_child(_health_bar)
+	var aircraft_button := Button.new()
+	aircraft_button.text = "ENTER AIRCRAFT ARCADE"
+	aircraft_button.pressed.connect(func(): get_tree().change_scene_to_file("res://aircraft.tscn"))
+	metrics.add_child(aircraft_button)
 
 
 func _update_hud() -> void:
@@ -280,12 +308,43 @@ func _update_hud() -> void:
 	var total := CHECKPOINTS.size() * TOTAL_LAPS
 	_progress_label.text = "LAP %d/%d  /  CHECKPOINT %d/%d" % [_lap, TOTAL_LAPS, completed, total]
 	_progress_bar.value = (float(completed) / float(total)) * 100.0
+	_health_bar.value = _health
+	_weapon_label.text = "WEAPON  /  %s  (Q/E SWITCH, F FIRE, G MISSILE)" % LobbySession.WEAPONS[_weapon_index]
 	if _race_finished:
 		_race_label.text = "RACE COMPLETE  /  WAITING FOR THE HOST"
 
 
 func _camera_mode_name() -> String:
 	return ["CHASE CAM", "HOOD CAM", "CINEMATIC ORBIT"][_camera_mode]
+
+
+func _update_weapons() -> void:
+	if _weapon_timer > 0.0 or _local_car == null:
+		return
+	if Input.is_key_pressed(KEY_F):
+		_fire_projectile(false)
+	elif Input.is_key_pressed(KEY_G) and _weapon_index == 2:
+		_fire_projectile(true)
+
+
+func _fire_projectile(missile: bool) -> void:
+	_weapon_timer = WEAPON_COOLDOWN[2] if missile else WEAPON_COOLDOWN[_weapon_index]
+	var projectile := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.18 if missile else 0.08
+	mesh.height = mesh.radius * 2.0
+	projectile.mesh = mesh
+	projectile.material_override = _material(Color(1.0, 0.22, 0.08) if missile else Color(1.0, 0.85, 0.25))
+	projectile.position = _local_car.global_position - _local_car.basis.z * 1.8 + Vector3.UP * 0.2
+	add_child(projectile)
+	var direction := -_local_car.basis.z
+	var speed := 32.0 if missile else 55.0
+	var damage: int = WEAPON_DAMAGE[2] if missile else WEAPON_DAMAGE[_weapon_index]
+	var timer := get_tree().create_timer(1.2)
+	timer.timeout.connect(func(): if is_instance_valid(projectile): projectile.queue_free())
+	var tween := create_tween()
+	tween.tween_property(projectile, "position", projectile.position + direction * speed, 1.0)
+	tween.finished.connect(func(): _score += damage)
 
 
 func _update_race_progress() -> void:

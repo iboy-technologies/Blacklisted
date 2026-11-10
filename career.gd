@@ -16,6 +16,10 @@ const CHECKPOINT_RADIUS := 5.0
 const MAX_SPEED := 42.0
 const BOOST_SPEED := 66.0
 const REWARD := 500
+const WEAPONS := ["Twin Cannons", "Pulse Blaster", "Rocket Pods"]
+const WEAPON_DAMAGE := [8, 14, 30]
+const WEAPON_COOLDOWN := [0.18, 0.4, 1.0]
+const MAX_HEALTH := 100.0
 
 var _car: Node3D
 var _camera: Camera3D
@@ -26,12 +30,17 @@ var _objective_label: Label
 var _progress_bar: ProgressBar
 var _boost_bar: ProgressBar
 var _car_label: Label
+var _weapon_label: Label
+var _health_bar: ProgressBar
 var _speed := 0.0
 var _boost := 100.0
 var _score := 0
 var _car_index := 0
 var _checkpoint := 0
 var _finished := false
+var _weapon_index := 0
+var _health := MAX_HEALTH
+var _weapon_timer := 0.0
 var _camera_time := 0.0
 
 
@@ -45,6 +54,8 @@ func _process(delta: float) -> void:
 		return
 	_camera_time += delta
 	_drive(delta)
+	_weapon_timer = maxf(0.0, _weapon_timer - delta)
+	_update_weapons()
 	_update_progress()
 	_update_camera(delta)
 	_update_hud()
@@ -58,6 +69,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_rebuild_car()
 	if event.keycode == KEY_ESCAPE:
 		get_tree().change_scene_to_file("res://main.tscn")
+	if event.keycode == KEY_Q:
+		_weapon_index = posmod(_weapon_index - 1, WEAPONS.size())
+	if event.keycode == KEY_E:
+		_weapon_index = posmod(_weapon_index + 1, WEAPONS.size())
 
 
 func _drive(delta: float) -> void:
@@ -199,6 +214,8 @@ func _build_hud() -> void:
 	controls.text = "ARROWS DRIVE  /  SPACE BOOST  /  1-3 CHANGE CAR  /  ESC EXIT"
 	controls.add_theme_color_override("font_color", Color(0.25, 0.78, 0.72))
 	content.add_child(controls)
+	_weapon_label = Label.new()
+	content.add_child(_weapon_label)
 	_speed_label = Label.new()
 	_speed_label.add_theme_font_size_override("font_size", 30)
 	content.add_child(_speed_label)
@@ -214,6 +231,14 @@ func _build_hud() -> void:
 	_progress_bar.max_value = 100.0
 	_progress_bar.show_percentage = false
 	content.add_child(_progress_bar)
+	_health_bar = ProgressBar.new()
+	_health_bar.max_value = MAX_HEALTH
+	_health_bar.show_percentage = false
+	content.add_child(_health_bar)
+	var aircraft_button := Button.new()
+	aircraft_button.text = "ENTER AIRCRAFT ARCADE"
+	aircraft_button.pressed.connect(func(): get_tree().change_scene_to_file("res://aircraft.tscn"))
+	content.add_child(aircraft_button)
 
 
 func _update_progress() -> void:
@@ -243,11 +268,42 @@ func _update_hud() -> void:
 	_boost_bar.value = _boost
 	_progress_label.text = "CHECKPOINT %d/%d" % [min(_checkpoint, CHECKPOINTS.size()), CHECKPOINTS.size()]
 	_progress_bar.value = (float(_checkpoint) / float(CHECKPOINTS.size())) * 100.0
+	_health_bar.value = _health
+	_weapon_label.text = "WEAPON  /  %s  (Q/E SWITCH, F FIRE, G MISSILE)" % WEAPONS[_weapon_index]
 
 
 func _rebuild_car() -> void:
 	_build_car_model()
 	_car_label.text = "CAR  /  %s" % CARS[_car_index]
+
+
+func _update_weapons() -> void:
+	if _weapon_timer > 0.0:
+		return
+	if Input.is_key_pressed(KEY_F):
+		_fire_projectile(false)
+	elif Input.is_key_pressed(KEY_G) and _weapon_index == 2:
+		_fire_projectile(true)
+
+
+func _fire_projectile(missile: bool) -> void:
+	_weapon_timer = WEAPON_COOLDOWN[2] if missile else WEAPON_COOLDOWN[_weapon_index]
+	var projectile := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.18 if missile else 0.08
+	mesh.height = mesh.radius * 2.0
+	projectile.mesh = mesh
+	projectile.material_override = _material(Color(1.0, 0.22, 0.08) if missile else Color(1.0, 0.85, 0.25))
+	projectile.position = _car.global_position - _car.basis.z * 1.8 + Vector3.UP * 0.2
+	add_child(projectile)
+	var direction := -_car.basis.z
+	var speed := 32.0 if missile else 55.0
+	var damage: int = WEAPON_DAMAGE[2] if missile else WEAPON_DAMAGE[_weapon_index]
+	var timer := get_tree().create_timer(1.2)
+	timer.timeout.connect(func(): if is_instance_valid(projectile): projectile.queue_free())
+	var tween := create_tween()
+	tween.tween_property(projectile, "position", projectile.position + direction * speed, 1.0)
+	tween.finished.connect(func(): _score += damage)
 
 
 func _add_road(position: Vector3, size: Vector3, material: StandardMaterial3D) -> void:

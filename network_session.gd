@@ -6,6 +6,7 @@ signal status_changed(message: String)
 const MAX_PLAYERS := 8
 const CARS := ["Comet GT", "Rally XR", "Roadster RS"]
 const MAPS := ["Harbor Circuit", "Dust Valley", "Neon Loop"]
+const WEAPONS := ["Twin Cannons", "Pulse Blaster", "Rocket Pods"]
 
 var _peer: ENetMultiplayerPeer
 var _hosting := false
@@ -14,6 +15,7 @@ var _state: Dictionary = {
 	"phase": "lobby",
 	"car": 0,
 	"map": 0,
+	"weapon": 0,
 	"players": {}
 }
 
@@ -49,6 +51,7 @@ func host_session(player_name: String, port: int) -> String:
 		"phase": "lobby",
 		"car": 0,
 		"map": 0,
+		"weapon": 0,
 		"players": {1: clean_player_name}
 	}
 	_player_name = clean_player_name
@@ -137,6 +140,8 @@ func _apply_selection(category: String, index: int) -> void:
 		_state["car"] = index
 	elif category == "map" and index >= 0 and index < MAPS.size():
 		_state["map"] = index
+	elif category == "weapon" and index >= 0 and index < WEAPONS.size():
+		_state["weapon"] = index
 	else:
 		return
 	_publish_state()

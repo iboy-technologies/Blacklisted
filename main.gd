@@ -2,6 +2,7 @@ extends Control
 
 const MATCH_SCENE := preload("res://match.tscn")
 const CAREER_SCENE := preload("res://career.tscn")
+const AIRCRAFT_SCENE := preload("res://aircraft.tscn")
 const PANEL_COLOR := Color(0.055, 0.075, 0.105, 0.94)
 const ACCENT := Color(0.25, 0.78, 0.72)
 const TEXT_COLOR := Color(0.9, 0.94, 0.97)
@@ -13,6 +14,7 @@ var _status_label: Label
 var _roster: VBoxContainer
 var _car_picker: OptionButton
 var _map_picker: OptionButton
+var _weapon_picker: OptionButton
 var _start_button: Button
 
 
@@ -84,6 +86,9 @@ func _build_connection_panel() -> Control:
 	var career_button := _button("CAREER MODE")
 	career_button.pressed.connect(func(): get_tree().change_scene_to_packed(CAREER_SCENE))
 	content.add_child(career_button)
+	var aircraft_button := _button("AIRCRAFT ARCADE")
+	aircraft_button.pressed.connect(func(): get_tree().change_scene_to_packed(AIRCRAFT_SCENE))
+	content.add_child(aircraft_button)
 	var note := Label.new()
 	note.text = "Share your address and port with players on your network."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -102,6 +107,7 @@ func _build_lobby_panel() -> Control:
 	content.add_child(row)
 	_build_picker_column(row, "CAR", LobbySession.CARS, true)
 	_build_picker_column(row, "MAP", LobbySession.MAPS, false)
+	_build_picker_column(content, "WEAPON", LobbySession.WEAPONS, false, true)
 
 	var roster_title := Label.new()
 	roster_title.text = "DRIVERS"
@@ -117,7 +123,7 @@ func _build_lobby_panel() -> Control:
 	return panel
 
 
-func _build_picker_column(parent: HBoxContainer, label_text: String, options: Array, is_car: bool) -> void:
+func _build_picker_column(parent: Control, label_text: String, options: Array, is_car: bool, is_weapon: bool = false) -> void:
 	var column := VBoxContainer.new()
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	parent.add_child(column)
@@ -132,6 +138,9 @@ func _build_picker_column(parent: HBoxContainer, label_text: String, options: Ar
 	if is_car:
 		_car_picker = picker
 		picker.item_selected.connect(func(index: int): LobbySession.set_shared_selection("car", index))
+	elif is_weapon:
+		_weapon_picker = picker
+		picker.item_selected.connect(func(index: int): LobbySession.set_shared_selection("weapon", index))
 	else:
 		_map_picker = picker
 		picker.item_selected.connect(func(index: int): LobbySession.set_shared_selection("map", index))
@@ -224,8 +233,10 @@ func _refresh_lobby(state: Dictionary) -> void:
 		return
 	_car_picker.select(clampi(int(state.get("car", 0)), 0, LobbySession.CARS.size() - 1))
 	_map_picker.select(clampi(int(state.get("map", 0)), 0, LobbySession.MAPS.size() - 1))
+	_weapon_picker.select(clampi(int(state.get("weapon", 0)), 0, LobbySession.WEAPONS.size() - 1))
 	_car_picker.disabled = not LobbySession.is_host()
 	_map_picker.disabled = not LobbySession.is_host()
+	_weapon_picker.disabled = not LobbySession.is_host()
 	_start_button.disabled = not LobbySession.is_host()
 	for child in _roster.get_children():
 		child.queue_free()
