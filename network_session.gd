@@ -4,7 +4,7 @@ signal state_changed(state: Dictionary)
 signal status_changed(message: String)
 
 const MAX_PLAYERS := 8
-const CARS := ["Comet", "Rally", "Roadster"]
+const CARS := ["Comet GT", "Rally XR", "Roadster RS"]
 const MAPS := ["Harbor Circuit", "Dust Valley", "Neon Loop"]
 
 var _peer: ENetMultiplayerPeer
@@ -45,7 +45,6 @@ func host_session(player_name: String, port: int) -> String:
 	_peer = new_peer
 	multiplayer.multiplayer_peer = _peer
 	_hosting = true
-	_player_name = name
 	_state = {
 		"phase": "lobby",
 		"car": 0,
