@@ -44,6 +44,13 @@ py -m venv .venv
 .\.venv\Scripts\python.exe camera_mouse.py
 ```
 
+If an existing MediaPipe installation reports that `mediapipe` has no
+`solutions` attribute, reinstall the dependencies in the virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall -r requirements-camera-mouse.txt
+```
+
 If Windows selects the wrong camera, choose another device index:
 
 ```powershell
