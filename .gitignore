@@ -1,2 +1,4 @@
 .godot/
 *.uid
+__pycache__/
+*.pyc

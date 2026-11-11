@@ -24,6 +24,43 @@ THE MP/LAN
 
 
 
+## Camera mouse
+
+`camera_mouse.py` turns a webcam into an operating-system mouse:
+
+- Move your index fingertip to move the cursor.
+- Pinch your index finger and thumb once to left-click.
+- Press `P` while the camera window is focused to pause or resume tracking.
+- Press `Q` or `Esc` to quit.
+
+The camera must be exposed to Windows as a normal webcam. This includes a phone
+when it is configured as a webcam with its companion application.
+
+From PowerShell:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-camera-mouse.txt
+.\.venv\Scripts\python.exe camera_mouse.py
+```
+
+If an existing MediaPipe installation reports that `mediapipe` has no
+`solutions` attribute, reinstall the dependencies in the virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall -r requirements-camera-mouse.txt
+```
+
+If Windows selects the wrong camera, choose another device index:
+
+```powershell
+.\.venv\Scripts\python.exe camera_mouse.py --camera 1
+```
+
+Use `--smoothing 0.15` for faster movement or `--smoothing 0.4` for steadier
+movement. The camera preview window must remain open while the cursor is being
+controlled.
+
 
 
 
