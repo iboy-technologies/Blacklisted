@@ -6,11 +6,30 @@ application.
 """
 
 import argparse
+import os
 import time
+import urllib.request
 
 import cv2
 import mediapipe as mp
 import pyautogui
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/1/hand_landmarker.task"
+)
+MODEL_PATH = os.path.join(os.path.dirname(__file__), ".camera_mouse", "hand_landmarker.task")
+HAND_CONNECTIONS = (
+    (0, 1), (1, 2), (2, 3), (3, 4),
+    (0, 5), (5, 6), (6, 7), (7, 8),
+    (5, 9), (9, 10), (10, 11), (11, 12),
+    (9, 13), (13, 14), (14, 15), (15, 16),
+    (13, 17), (17, 18), (18, 19), (19, 20),
+    (0, 17),
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,10 +58,35 @@ def remap(value: float, margin: float) -> float:
     return clamp((value - margin) / (1.0 - (margin * 2.0)), 0.0, 1.0)
 
 
+def ensure_model() -> None:
+    if os.path.isfile(MODEL_PATH):
+        return
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+    print("Downloading the hand-tracking model...")
+    try:
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+    except Exception as error:
+        if os.path.isfile(MODEL_PATH):
+            os.remove(MODEL_PATH)
+        raise RuntimeError(
+            "Could not download the hand-tracking model. Check your internet connection."
+        ) from error
+
+
+def draw_hand(frame, landmarks) -> None:
+    height, width = frame.shape[:2]
+    points = [(int(point.x * width), int(point.y * height)) for point in landmarks]
+    for start, end in HAND_CONNECTIONS:
+        cv2.line(frame, points[start], points[end], (80, 230, 210), 2)
+    for point in points:
+        cv2.circle(frame, point, 4, (255, 255, 255), -1)
+
+
 def main() -> None:
     args = parse_args()
     smoothing = clamp(args.smoothing, 0.05, 1.0)
     margin = clamp(args.margin, 0.0, 0.3)
+    ensure_model()
 
     camera = cv2.VideoCapture(args.camera, cv2.CAP_DSHOW)
     if not camera.isOpened():
@@ -53,15 +97,14 @@ def main() -> None:
     screen_width, screen_height = pyautogui.size()
     pyautogui.PAUSE = 0.0
     pyautogui.FAILSAFE = True
-    hands_module = mp.solutions.hands
-    drawing = mp.solutions.drawing_utils
-    hand_tracker = hands_module.Hands(
-        static_image_mode=False,
-        max_num_hands=1,
-        model_complexity=0,
+    hand_tracker = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=MODEL_PATH),
+        running_mode=vision.RunningMode.VIDEO,
+        num_hands=1,
         min_detection_confidence=0.7,
+        min_hand_presence_confidence=0.7,
         min_tracking_confidence=0.6,
-    )
+    ))
 
     cursor_x = screen_width / 2.0
     cursor_y = screen_height / 2.0
@@ -78,13 +121,15 @@ def main() -> None:
 
             frame = cv2.flip(frame, 1)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            result = hand_tracker.process(rgb_frame)
-            hand = result.multi_hand_landmarks[0] if result.multi_hand_landmarks else None
+            image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+            timestamp_ms = int(time.monotonic() * 1000)
+            result = hand_tracker.detect_for_video(image, timestamp_ms)
+            hand = result.hand_landmarks[0] if result.hand_landmarks else None
             pinched = False
 
             if hand:
-                index_tip = hand.landmark[hands_module.HandLandmark.INDEX_FINGER_TIP]
-                thumb_tip = hand.landmark[hands_module.HandLandmark.THUMB_TIP]
+                index_tip = hand[8]
+                thumb_tip = hand[4]
                 target_x = remap(index_tip.x, margin) * screen_width
                 target_y = remap(index_tip.y, margin) * screen_height
                 cursor_x += (target_x - cursor_x) * smoothing
@@ -99,7 +144,7 @@ def main() -> None:
                         pyautogui.click()
                         last_click = now
 
-                drawing.draw_landmarks(frame, hand, hands_module.HAND_CONNECTIONS)
+                draw_hand(frame, hand)
 
             was_pinched = pinched
             status = "PAUSED (P to resume)" if paused else "TRACKING"
