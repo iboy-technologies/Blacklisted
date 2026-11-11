@@ -44,9 +44,9 @@ py -m venv .venv
 .\.venv\Scripts\python.exe camera_mouse.py
 ```
 
-The requirements pin MediaPipe to the legacy hand-tracking API used by this
-script. If MediaPipe was already installed, reinstall the dependencies in the
-virtual environment:
+The script uses MediaPipe's current Hand Landmarker API and downloads its model
+into `.camera_mouse` on the first run. If dependencies were already installed,
+reinstall them in the virtual environment:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall -r requirements-camera-mouse.txt

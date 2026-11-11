@@ -2,3 +2,4 @@
 *.uid
 __pycache__/
 *.pyc
+.camera_mouse/
