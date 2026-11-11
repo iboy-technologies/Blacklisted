@@ -9,8 +9,8 @@ import argparse
 import time
 
 import cv2
+import mediapipe as mp
 import pyautogui
-from mediapipe.python.solutions import drawing_utils, hands
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,7 +53,9 @@ def main() -> None:
     screen_width, screen_height = pyautogui.size()
     pyautogui.PAUSE = 0.0
     pyautogui.FAILSAFE = True
-    hand_tracker = hands.Hands(
+    hands_module = mp.solutions.hands
+    drawing = mp.solutions.drawing_utils
+    hand_tracker = hands_module.Hands(
         static_image_mode=False,
         max_num_hands=1,
         model_complexity=0,
@@ -81,8 +83,8 @@ def main() -> None:
             pinched = False
 
             if hand:
-                index_tip = hand.landmark[hands.HandLandmark.INDEX_FINGER_TIP]
-                thumb_tip = hand.landmark[hands.HandLandmark.THUMB_TIP]
+                index_tip = hand.landmark[hands_module.HandLandmark.INDEX_FINGER_TIP]
+                thumb_tip = hand.landmark[hands_module.HandLandmark.THUMB_TIP]
                 target_x = remap(index_tip.x, margin) * screen_width
                 target_y = remap(index_tip.y, margin) * screen_height
                 cursor_x += (target_x - cursor_x) * smoothing
@@ -97,7 +99,7 @@ def main() -> None:
                         pyautogui.click()
                         last_click = now
 
-                drawing_utils.draw_landmarks(frame, hand, hands.HAND_CONNECTIONS)
+                drawing.draw_landmarks(frame, hand, hands_module.HAND_CONNECTIONS)
 
             was_pinched = pinched
             status = "PAUSED (P to resume)" if paused else "TRACKING"
