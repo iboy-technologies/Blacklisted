@@ -29,7 +29,10 @@ THE MP/LAN
 `camera_mouse.py` turns a webcam into an operating-system mouse:
 
 - Move your index fingertip to move the cursor.
-- Pinch your index finger and thumb once to left-click.
+- Pinch your index finger and thumb, then release, to left-click.
+- Pinch your middle finger and thumb to right-click.
+- Pinch index finger and thumb twice quickly for a double-click.
+- Hold the index-finger pinch for a moment, then move your hand to drag.
 - Press `P` while the camera window is focused to pause or resume tracking.
 - Press `Q` or `Esc` to quit.
 

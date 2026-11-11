@@ -30,6 +30,9 @@ HAND_CONNECTIONS = (
     (13, 17), (17, 18), (18, 19), (19, 20),
     (0, 17),
 )
+PINCH_THRESHOLD = 0.055
+OTHER_PINCH_THRESHOLD = 0.075
+DRAG_HOLD_SECONDS = 0.28
 
 
 def parse_args() -> argparse.Namespace:
@@ -108,8 +111,9 @@ def main() -> None:
 
     cursor_x = screen_width / 2.0
     cursor_y = screen_height / 2.0
-    was_pinched = False
-    last_click = 0.0
+    active_gesture = None
+    gesture_started_at = 0.0
+    dragging = False
     paused = False
     window_name = "Blacklisted Camera Mouse"
 
@@ -125,32 +129,77 @@ def main() -> None:
             timestamp_ms = int(time.monotonic() * 1000)
             result = hand_tracker.detect_for_video(image, timestamp_ms)
             hand = result.hand_landmarks[0] if result.hand_landmarks else None
-            pinched = False
+            gesture = None
 
             if hand:
                 index_tip = hand[8]
+                middle_tip = hand[12]
                 thumb_tip = hand[4]
                 target_x = remap(index_tip.x, margin) * screen_width
                 target_y = remap(index_tip.y, margin) * screen_height
                 cursor_x += (target_x - cursor_x) * smoothing
                 cursor_y += (target_y - cursor_y) * smoothing
 
-                pinch_distance = ((index_tip.x - thumb_tip.x) ** 2 + (index_tip.y - thumb_tip.y) ** 2) ** 0.5
-                pinched = pinch_distance < 0.055
+                index_pinch_distance = (
+                    (index_tip.x - thumb_tip.x) ** 2 + (index_tip.y - thumb_tip.y) ** 2
+                ) ** 0.5
+                middle_pinch_distance = (
+                    (middle_tip.x - thumb_tip.x) ** 2 + (middle_tip.y - thumb_tip.y) ** 2
+                ) ** 0.5
+                if (
+                    index_pinch_distance < PINCH_THRESHOLD
+                    and middle_pinch_distance > OTHER_PINCH_THRESHOLD
+                ):
+                    gesture = "left"
+                elif (
+                    middle_pinch_distance < PINCH_THRESHOLD
+                    and index_pinch_distance > OTHER_PINCH_THRESHOLD
+                ):
+                    gesture = "right"
+
                 now = time.monotonic()
                 if not paused:
                     pyautogui.moveTo(int(cursor_x), int(cursor_y), _pause=False)
-                    if pinched and not was_pinched and now - last_click > 0.35:
-                        pyautogui.click()
-                        last_click = now
+                    if gesture != active_gesture:
+                        previous_gesture = active_gesture
+                        if previous_gesture == "left":
+                            if dragging:
+                                pyautogui.mouseUp(button="left")
+                                dragging = False
+                            elif gesture is None:
+                                pyautogui.click()
+                        elif previous_gesture == "right":
+                            pyautogui.click(button="right")
+                        if gesture is not None:
+                            gesture_started_at = now
+                        active_gesture = gesture
+                    if (
+                        active_gesture == "left"
+                        and not dragging
+                        and now - gesture_started_at >= DRAG_HOLD_SECONDS
+                    ):
+                        pyautogui.mouseDown(button="left")
+                        dragging = True
+                    if active_gesture == "right" and gesture != "right":
+                        pyautogui.click(button="right")
+                        active_gesture = None
 
                 draw_hand(frame, hand)
 
-            was_pinched = pinched
+            if not hand and not paused and active_gesture is not None:
+                if active_gesture == "left":
+                    if dragging:
+                        pyautogui.mouseUp(button="left")
+                        dragging = False
+                    else:
+                        pyautogui.click()
+                elif active_gesture == "right":
+                    pyautogui.click(button="right")
+                active_gesture = None
             status = "PAUSED (P to resume)" if paused else "TRACKING"
             cv2.putText(
                 frame,
-                f"{status}  |  pinch: click  |  P: pause  |  Q/Esc: quit",
+                f"{status}  |  index pinch: click/drag  |  middle pinch: right click  |  P: pause  |  Q/Esc: quit",
                 (16, 32),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
@@ -165,6 +214,8 @@ def main() -> None:
             if key == ord("p"):
                 paused = not paused
     finally:
+        if dragging:
+            pyautogui.mouseUp(button="left")
         camera.release()
         hand_tracker.close()
         cv2.destroyAllWindows()
