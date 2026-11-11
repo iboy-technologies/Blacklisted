@@ -39,6 +39,12 @@ THE MP/LAN
 The camera must be exposed to Windows as a normal webcam. This includes a phone
 when it is configured as a webcam with its companion application.
 
+At startup, a consent setup window lets you choose a PC camera or a phone
+camera over the local network. For a phone, use an IP-camera application that
+provides an MJPEG, HTTP, or RTSP stream, then enter its LAN stream URL (for
+example `http://192.168.1.100:8080/video`). The PC and phone must be on the
+same network.
+
 From PowerShell:
 
 ```powershell
@@ -55,7 +61,8 @@ reinstall them in the virtual environment:
 .\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall -r requirements-camera-mouse.txt
 ```
 
-If Windows selects the wrong camera, choose another device index:
+The setup window also lets you choose another PC camera device index. To set
+the default index:
 
 ```powershell
 .\.venv\Scripts\python.exe camera_mouse.py --camera 1

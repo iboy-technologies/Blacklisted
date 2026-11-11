@@ -8,7 +8,9 @@ application.
 import argparse
 import os
 import time
+import tkinter as tk
 import urllib.request
+from tkinter import messagebox, ttk
 
 import cv2
 import mediapipe as mp
@@ -85,16 +87,109 @@ def draw_hand(frame, landmarks) -> None:
         cv2.circle(frame, point, 4, (255, 255, 255), -1)
 
 
+def choose_camera_source(default_camera: int) -> tuple[object, str] | None:
+    selection = {"source": None, "label": ""}
+    root = tk.Tk()
+    root.title("Blacklisted Camera Mouse Setup")
+    root.resizable(False, False)
+    root.protocol("WM_DELETE_WINDOW", root.destroy)
+
+    choice = tk.StringVar(value="pc")
+    pc_index = tk.StringVar(value=str(default_camera))
+    phone_url = tk.StringVar(value="http://192.168.1.100:8080/video")
+    consent = tk.BooleanVar(value=False)
+
+    content = ttk.Frame(root, padding=18)
+    content.grid()
+    ttk.Label(
+        content,
+        text="Choose the camera that will control your mouse.",
+        font=("Segoe UI", 11, "bold"),
+    ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+    ttk.Radiobutton(
+        content,
+        text="PC camera",
+        variable=choice,
+        value="pc",
+    ).grid(row=1, column=0, sticky="w")
+    ttk.Label(content, text="Device index:").grid(row=1, column=1, padx=(18, 4))
+    ttk.Spinbox(content, from_=0, to=9, width=5, textvariable=pc_index).grid(row=1, column=2)
+    ttk.Radiobutton(
+        content,
+        text="Phone camera over LAN",
+        variable=choice,
+        value="phone",
+    ).grid(row=2, column=0, sticky="w", pady=(10, 0))
+    ttk.Label(content, text="Stream URL:").grid(row=3, column=0, sticky="w", pady=(4, 0))
+    phone_entry = ttk.Entry(content, width=44, textvariable=phone_url)
+    phone_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(4, 0))
+    ttk.Label(
+        content,
+        text="Example: http://PHONE_IP:8080/video or rtsp://PHONE_IP:8554/live",
+        foreground="#666666",
+    ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 12))
+    ttk.Checkbutton(
+        content,
+        text="I consent to using the selected camera for mouse control.",
+        variable=consent,
+    ).grid(row=5, column=0, columnspan=3, sticky="w")
+
+    def submit() -> None:
+        if not consent.get():
+            messagebox.showwarning(
+                "Consent required",
+                "Please confirm consent before enabling camera mouse control.",
+                parent=root,
+            )
+            return
+        if choice.get() == "pc":
+            try:
+                selection["source"] = int(pc_index.get())
+            except ValueError:
+                messagebox.showerror("Invalid camera", "Device index must be a number.", parent=root)
+                return
+            selection["label"] = f"PC camera {selection['source']}"
+        else:
+            url = phone_url.get().strip()
+            if not url.startswith(("http://", "https://", "rtsp://")):
+                messagebox.showerror(
+                    "Invalid stream URL",
+                    "Use an http://, https://, or rtsp:// phone stream URL.",
+                    parent=root,
+                )
+                return
+            selection["source"] = url
+            selection["label"] = "Phone camera"
+        root.destroy()
+
+    buttons = ttk.Frame(content)
+    buttons.grid(row=6, column=0, columnspan=3, sticky="e", pady=(16, 0))
+    ttk.Button(buttons, text="Cancel", command=root.destroy).grid(row=0, column=0, padx=(0, 8))
+    ttk.Button(buttons, text="Use selected camera", command=submit).grid(row=0, column=1)
+    root.mainloop()
+    if selection["source"] is None:
+        return None
+    return selection["source"], selection["label"]
+
+
 def main() -> None:
     args = parse_args()
     smoothing = clamp(args.smoothing, 0.05, 1.0)
     margin = clamp(args.margin, 0.0, 0.3)
-    ensure_model()
 
-    camera = cv2.VideoCapture(args.camera, cv2.CAP_DSHOW)
+    camera_source = choose_camera_source(args.camera)
+    if camera_source is None:
+        return
+    source, source_label = camera_source
+    ensure_model()
+    camera = (
+        cv2.VideoCapture(source, cv2.CAP_DSHOW)
+        if isinstance(source, int)
+        else cv2.VideoCapture(source)
+    )
     if not camera.isOpened():
         raise RuntimeError(
-            f"Could not open camera {args.camera}. Check the camera index and Windows permissions."
+            f"Could not open {source_label}. Check the camera settings and LAN stream URL."
         )
 
     screen_width, screen_height = pyautogui.size()
@@ -199,7 +294,7 @@ def main() -> None:
             status = "PAUSED (P to resume)" if paused else "TRACKING"
             cv2.putText(
                 frame,
-                f"{status}  |  index pinch: click/drag  |  middle pinch: right click  |  P: pause  |  Q/Esc: quit",
+                f"{source_label}  |  {status}  |  index pinch: click/drag  |  middle pinch: right click  |  P: pause  |  Q/Esc: quit",
                 (16, 32),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
